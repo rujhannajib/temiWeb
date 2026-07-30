@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Temi Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <header>
+        <h1>Temi Dashboard</h1>
+        <span id="conn">disconnected</span>
+    </header>
+
+    <main>
+
+        <!-- status strip: everything the robot reports, one compact row -->
+        <div class="card strip">
+            <div class="stat">
+                <span class="statLabel">Battery</span>
+                <span class="statValue"><span id="batteryLevel">--</span>%<small id="charging"></small></span>
+                <div id="batteryBar">
+                    <div id="batteryFill"></div>
+                </div>
+            </div>
+            <div class="stat">
+                <span class="statLabel">Internal temp</span>
+                <span class="statValue"><span id="batteryTemp">--</span>&deg;C</span>
+            </div>
+            <div class="stat">
+                <span class="statLabel">Position</span>
+                <span class="statValue small">
+                    x <b id="posX">--</b>&ensp;y <b id="posY">--</b>&ensp;yaw <b id="posYaw">--</b>
+                </span>
+            </div>
+            <div class="stat">
+                <span class="statLabel">Navigation</span>
+                <span class="statValue small"><b id="navStatus">idle</b> <span id="navLocation"></span></span>
+            </div>
+            <div class="stat">
+                <span class="statLabel">Presence</span>
+                <span class="statValue small"><span id="detectDot"></span> <span id="detectState">idle</span></span>
+            </div>
+            <div class="stat">
+                <span class="statLabel">Screen in use</span>
+                <span class="statValue small" id="interacting">--</span>
+            </div>
+            <div class="stat">
+                <span class="statLabel">Robot</span>
+                <span class="statValue small"><span id="serial">--</span><br><span class="sub"
+                        id="lastUpdate">never</span></span>
+            </div>
+        </div>
+
+        <!-- controls -->
+        <div class="grid2">
+            <div class="card">
+                <h2>Speak</h2>
+                <div class="inline">
+                    <input id="ttsText" placeholder="Type something for Temi to say..." maxlength="200">
+                    <button id="speakBtn">Speak</button>
+                </div>
+                <div id="speakStatus" class="sub"></div>
+            </div>
+
+            <div class="card">
+                <h2>Go To</h2>
+                <div id="locButtons" class="btnRow"><span class="sub">waiting for locations...</span></div>
+                <button id="stopBtn" disabled>STOP</button>
+            </div>
+
+            <div class="card">
+                <h2>Rotate</h2>
+                <div class="btnRow">
+                    <button class="locBtn" onclick="turnBy(90)">&#8634; 90&deg;</button>
+                    <button class="locBtn" onclick="turnBy(45)">&#8634; 45&deg;</button>
+                    <button class="locBtn" onclick="turnBy(15)">&#8634; 15&deg;</button>
+                    <button class="locBtn" onclick="turnBy(-15)">15&deg; &#8635;</button>
+                    <button class="locBtn" onclick="turnBy(-45)">45&deg; &#8635;</button>
+                    <button class="locBtn" onclick="turnBy(-90)">90&deg; &#8635;</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Head Tilt</h2>
+                <input type="range" id="tiltSlider" min="-25" max="55" value="0" step="5">
+                <div class="inline spread sub">
+                    <span>down -25&deg;</span>
+                    <span id="tiltValue"><b>0&deg;</b></span>
+                    <span>+55&deg; up</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- media -->
+        <div class="grid2">
+            <div class="card">
+                <h2>Camera</h2>
+                <div class="btnRow">
+                    <button id="photoBtn" class="locBtn" disabled>&#128247; Capture</button>
+                    <button id="clearPhotoBtn" class="locBtn ghost">Clear</button>
+                </div>
+                <div id="photoStatus" class="sub"></div>
+                <img id="photo" alt="">
+            </div>
+
+            <div class="card">
+                <h2>Listen</h2>
+                <div class="btnRow">
+                    <button id="listenBtn" class="locBtn" disabled>&#127908; Listen</button>
+                    <button id="clearAsrBtn" class="locBtn ghost">Clear</button>
+                </div>
+                <div id="asrLog"></div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer>MQTT over WebSocket &middot; <span id="brokerUrl"></span></footer>
+
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

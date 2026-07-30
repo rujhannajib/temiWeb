@@ -1,0 +1,8 @@
+# Copy this file to temi.conf (or your own name) and adjust as needed.
+# Do not commit the real one if you later add auth (password_file, etc).
+
+listener 1883 0.0.0.0
+allow_anonymous true
+
+listener 9001 0.0.0.0
+protocol websockets

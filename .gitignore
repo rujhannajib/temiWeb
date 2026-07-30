@@ -1,0 +1,26 @@
+# Secrets — never commit these
+.env
+mqtt/temi.conf
+mqtt/passwd
+
+# Android / Gradle
+android/.gradle/
+android/.idea/
+android/local.properties
+android/build/
+android/app/build/
+android/*.iml
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/
+
+# Python
+agent/__pycache__/
+agent/*.pyc
+**/venv/
+**/.venv/
+__pycache__/
+
+# OS clutter
+.DS_Store
+Thumbs.db
