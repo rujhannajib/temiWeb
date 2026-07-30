@@ -239,6 +239,78 @@ main {
     width: 100%;
 }
 
+.dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 58px);
+    grid-template-rows: repeat(3, 58px);
+    gap: 6px;
+    justify-content: center;
+}
+
+.dpadBtn {
+    font-size: 20px;
+    border: 1px solid #1d9e75;
+    border-radius: 8px;
+    background: #fff;
+    color: #0f6e56;
+    cursor: pointer;
+    user-select: none;
+    touch-action: none;
+    /* stop the page from scrolling while pressing on mobile */
+    transition: background 0.1s, box-shadow 0.1s, transform 0.1s;
+}
+
+.dpadBtn.pressed {
+    background: #1d9e75;
+    color: #fff;
+    box-shadow: 0 0 14px 2px rgba(29, 158, 117, 0.55);
+    transform: scale(1.06);
+}
+
+.dpadUp {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.dpadLeft {
+    grid-column: 1;
+    grid-row: 2;
+}
+
+.dpadRight {
+    grid-column: 3;
+    grid-row: 2;
+}
+
+.dpadDown {
+    grid-column: 2;
+    grid-row: 3;
+}
+
+.speedRow {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    justify-content: center;
+}
+
+.speedBtn {
+    padding: 6px 14px;
+    font-size: 13px;
+    border: 1px solid #ccc;
+    border-radius: 999px;
+    background: #fff;
+    color: #777;
+    cursor: pointer;
+}
+
+.speedBtn.active {
+    border-color: #1d9e75;
+    background: #e1f5ee;
+    color: #0f6e56;
+    font-weight: 600;
+}
+
 /* ── camera & listen ──────────────────────────── */
 
 #photo {

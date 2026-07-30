@@ -65,13 +65,6 @@ client.on("message", (topic, message) => {
         const fill = document.getElementById("batteryFill");
         fill.style.width = data.level + "%";
         fill.style.background = data.level > 20 ? "#1d9e75" : "#e24b4a";
-
-        // v10: internal (battery) temperature — amber above 40, red above 45
-        if (data.temp !== undefined) {
-            const t = document.getElementById("batteryTemp");
-            t.textContent = data.temp.toFixed(1);
-            t.style.color = data.temp > 45 ? "#e24b4a" : data.temp > 40 ? "#e8a13c" : "#222";
-        }
     }
 
     if (topic === "temi/status/position") {
@@ -189,10 +182,6 @@ document.getElementById("clearAsrBtn").addEventListener("click", () => {
     document.getElementById("asrLog").innerHTML = "";
 });
 
-function turnBy(degrees) {
-    client.publish("temi/command/turn", JSON.stringify({ degrees: degrees }));
-}
-
 const tiltSlider = document.getElementById("tiltSlider");
 const tiltValue = document.getElementById("tiltValue");
 tiltSlider.addEventListener("input", () => {
@@ -200,4 +189,112 @@ tiltSlider.addEventListener("input", () => {
 });
 tiltSlider.addEventListener("change", () => {
     client.publish("temi/command/tilt", JSON.stringify({ angle: parseInt(tiltSlider.value) }));
+});
+
+// ── drive (buttons + keyboard) ──────────────────────────────────
+// The dead-man switch lives on the ROBOT side: skidJoy only keeps moving
+// while it keeps being called. So here we re-send the current vector
+// every 200ms while any direction is held, and stop the instant nothing
+// is held. If the connection drops or the tab closes, nothing gets sent
+// and the robot naturally stops on its own — no extra watchdog needed.
+
+const DRIVE_INTERVAL_MS = 200;
+const activeDirections = new Set(); // 'forward' | 'backward' | 'left' | 'right'
+let driveTimer = null;
+let driveSpeed = 0.6; // scales the vector — skidJoy's x/y ARE the speed fraction (-1..1 of max)
+
+function clamp(n) { return Math.max(-1, Math.min(1, n)); }
+
+// direction -> its button element, so keyboard presses can glow the
+// matching button even though the key never touches it directly
+const dirButtons = {};
+document.querySelectorAll(".dpadBtn").forEach((btn) => {
+    dirButtons[btn.dataset.dir] = btn;
+});
+
+// combine whatever's currently held into one vector — supports
+// diagonals, e.g. holding forward + right curves while driving
+function computeDriveVector() {
+    let x = 0, y = 0;
+    if (activeDirections.has("forward")) y += 1;
+    if (activeDirections.has("backward")) y -= 1;
+    if (activeDirections.has("left")) x -= 1;
+    if (activeDirections.has("right")) x += 1;
+    return { x: clamp(x * driveSpeed), y: clamp(y * driveSpeed) };
+}
+
+function publishDrive() {
+    client.publish("temi/command/move", JSON.stringify(computeDriveVector()));
+}
+
+function startDriving(direction) {
+    if (activeDirections.has(direction)) return; // already active — key auto-repeat, ignore
+    activeDirections.add(direction);
+    dirButtons[direction]?.classList.add("pressed");
+    publishDrive(); // send immediately, don't wait for the first interval tick
+    if (!driveTimer) {
+        driveTimer = setInterval(publishDrive, DRIVE_INTERVAL_MS);
+    }
+}
+
+function stopDriving(direction) {
+    if (!activeDirections.has(direction)) return;
+    activeDirections.delete(direction);
+    dirButtons[direction]?.classList.remove("pressed");
+    if (activeDirections.size === 0) {
+        clearInterval(driveTimer);
+        driveTimer = null;
+        client.publish("temi/command/move", JSON.stringify({ x: 0, y: 0 })); // explicit stop
+    } else {
+        publishDrive(); // still moving, but the vector changed — send right away
+    }
+}
+
+// buttons — pointer events cover mouse + touch in one listener
+document.querySelectorAll(".dpadBtn").forEach((btn) => {
+    const dir = btn.dataset.dir;
+    btn.addEventListener("pointerdown", (e) => { e.preventDefault(); startDriving(dir); });
+    btn.addEventListener("pointerup", () => stopDriving(dir));
+    btn.addEventListener("pointerleave", () => stopDriving(dir)); // finger/cursor dragged off the button
+    btn.addEventListener("pointercancel", () => stopDriving(dir));
+});
+
+// keyboard — arrow keys and WASD
+const DRIVE_KEYS = {
+    ArrowUp: "forward", w: "forward", W: "forward",
+    ArrowDown: "backward", s: "backward", S: "backward",
+    ArrowLeft: "left", a: "left", A: "left",
+    ArrowRight: "right", d: "right", D: "right",
+};
+
+window.addEventListener("keydown", (e) => {
+    const dir = DRIVE_KEYS[e.key];
+    if (!dir) return;
+    e.preventDefault(); // stop arrow keys from scrolling the page
+    startDriving(dir);
+});
+
+window.addEventListener("keyup", (e) => {
+    const dir = DRIVE_KEYS[e.key];
+    if (dir) stopDriving(dir);
+});
+
+// safety: if the window loses focus (alt-tab, clicking another app) while
+// a key is held, keyup never fires — so force a full stop on blur
+window.addEventListener("blur", () => {
+    activeDirections.clear();
+    clearInterval(driveTimer);
+    driveTimer = null;
+    Object.values(dirButtons).forEach((btn) => btn.classList.remove("pressed"));
+    client.publish("temi/command/move", JSON.stringify({ x: 0, y: 0 }));
+});
+
+// speed selector — changes take effect on the NEXT publish tick,
+// so adjusting speed mid-drive works without releasing first
+document.querySelectorAll(".speedBtn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+        driveSpeed = parseFloat(btn.dataset.speed);
+        document.querySelectorAll(".speedBtn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+    });
 });

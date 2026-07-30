@@ -1,14 +1,13 @@
 package com.example.temi_rujhan
 
-// v7: v6 + listen (speech-to-text)
-// New: "photo" command opens the front camera, captures one JPEG, releases
-// the camera, and publishes the raw bytes to temi/status/photo (retained).
+// v7: v6 + listen (speech-to-text) + photo capture
+// "photo" opens the front camera, captures one JPEG, releases the camera,
+// and publishes the raw bytes to temi/status/photo (retained).
 // Uses the legacy android.hardware.Camera API on purpose — it works on
 // Temi's old Android versions and needs zero new Gradle dependencies.
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.graphics.SurfaceTexture
 import android.os.Bundle
 import android.util.Log
 import android.view.WindowManager
@@ -54,20 +53,51 @@ class MainActivity : AppCompatActivity(),
     private var mqtt: MqttClient? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var statusText: TextView
-    private var capturing = false // one capture at a time
+    private lateinit var photoView: android.widget.ImageView
+
+    // FIX: this must be a class-level property, not declared inside onCreate()
+    private lateinit var previewHolder: android.view.SurfaceHolder
+
+    private var capturing = false // one photo capture at a time
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        statusText = TextView(this).apply {
-            textSize = 22f
-            setPadding(48, 48, 48, 48)
-            text = "Temi Bridge v7\nWaiting for robot..."
-        }
-        setContentView(statusText)
 
-        // NEW in v5: ask for camera permission on first launch.
-        // Someone taps "Allow" on Temi's screen once; Android remembers it.
+        val root = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.BLACK)
+        }
+
+        // A tiny (2x2px), effectively invisible SurfaceView. The legacy
+        // Camera API refuses to run without a real preview surface, even
+        // for a single still shot — this satisfies that requirement
+        // without showing any actual preview on screen.
+        val previewSurfaceView = android.view.SurfaceView(this).apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(2, 2)
+        }
+        previewHolder = previewSurfaceView.holder
+
+        statusText = TextView(this).apply {
+            textSize = 15f
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(32, 24, 32, 24)
+            text = "Temi Bridge\nWaiting for robot..."
+        }
+
+        photoView = android.widget.ImageView(this).apply {
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f // fills remaining space
+            )
+            setBackgroundColor(android.graphics.Color.DKGRAY)
+        }
+
+        root.addView(previewSurfaceView)
+        root.addView(statusText)
+        root.addView(photoView)
+        setContentView(root)
+
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -84,7 +114,7 @@ class MainActivity : AppCompatActivity(),
         robot.addOnDetectionStateChangedListener(this)
         robot.addOnUserInteractionChangedListener(this)
         robot.addOnLocationsUpdatedListener(this)
-        robot.addAsrListener(this) // NEW in v7
+        robot.addAsrListener(this)
     }
 
     override fun onStop() {
@@ -92,8 +122,8 @@ class MainActivity : AppCompatActivity(),
         robot.removeOnGoToLocationStatusChangedListener(this)
         robot.removeOnDetectionStateChangedListener(this)
         robot.removeOnUserInteractionChangedListener(this)
-        robot.removeOnLocationsUpdateListener(this) // note: SDK names this without the 'd' in Update
-        robot.removeAsrListener(this) // NEW in v7
+        robot.removeOnLocationsUpdateListener(this) // SDK names this without the 'd' in Update
+        robot.removeAsrListener(this)
         super.onStop()
     }
 
@@ -131,20 +161,13 @@ class MainActivity : AppCompatActivity(),
         publishLocations(locations)
     }
 
-    // NEW in v7: fires when temi's speech recognition produces text.
-    // NOTE: depending on your SDK version the signature may include a second
-    // parameter (sttLanguage). If Android Studio underlines this in red,
-    // delete this function, put the cursor on the class name, press
-    // Alt+Insert -> Implement Members, and let the IDE generate the correct
-    // signature — then move the body below into it.
-//    override fun onAsrResult(asrResult: String, sttLanguage: com.robotemi.sdk.constants.SttLanguage) {
-//        showStatus("Heard: \"$asrResult\"")
-//        publishEvent("temi/status/asr", JSONObject()
-//            .put("text", asrResult)
-//            .put("timestamp", System.currentTimeMillis()))
-//        // Close the assistant overlay so the conversation doesn't hang open
-//        robot.finishConversation()
-//    }
+    override fun onAsrResult(asrResult: String, sttLanguage: SttLanguage) {
+        showStatus("Heard: \"$asrResult\"")
+        publishEvent("temi/status/asr", JSONObject()
+            .put("text", asrResult)
+            .put("timestamp", System.currentTimeMillis()))
+        robot.finishConversation()
+    }
 
     private fun publishLocations(locations: List<String>) {
         publishEvent("temi/status/locations", JSONObject()
@@ -164,7 +187,7 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
-    // ── NEW in v5: photo capture ────────────────────────────────
+    // ── photo capture ────────────────────────────────────────────
 
     private fun capturePhoto() {
         runOnUiThread {
@@ -182,8 +205,6 @@ class MainActivity : AppCompatActivity(),
             try {
                 camera = android.hardware.Camera.open(findFrontCameraId())
 
-                // Keep the JPEG small enough for MQTT + browser:
-                // pick the supported picture size closest to 1024px wide.
                 val params = camera.parameters
                 val size = params.supportedPictureSizes
                     .minByOrNull { kotlin.math.abs(it.width - 1024) }
@@ -191,21 +212,21 @@ class MainActivity : AppCompatActivity(),
                 params.jpegQuality = 75
                 camera.parameters = params
 
-                // The camera needs a preview target even for a single shot;
-                // an off-screen SurfaceTexture satisfies it without any UI.
-                camera.setPreviewTexture(SurfaceTexture(10))
+                camera.setPreviewDisplay(previewHolder)
                 camera.startPreview()
 
-                // Give auto-exposure a moment, then shoot.
                 statusText.postDelayed({
                     try {
                         camera.takePicture(null, null) { jpegBytes, cam ->
                             try { cam.stopPreview(); cam.release() } catch (_: Exception) {}
                             capturing = false
                             showStatus("Photo captured (${jpegBytes.size / 1024} KB), publishing...")
+
+                            val bitmap = android.graphics.BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+                            runOnUiThread { photoView.setImageBitmap(bitmap) }
+
                             scope.launch {
                                 try {
-                                    // Raw JPEG bytes as the payload — not JSON.
                                     mqtt?.takeIf { it.isConnected }?.publish(
                                         "temi/status/photo",
                                         MqttMessage(jpegBytes).apply { isRetained = true }
@@ -237,7 +258,7 @@ class MainActivity : AppCompatActivity(),
             android.hardware.Camera.getCameraInfo(i, info)
             if (info.facing == android.hardware.Camera.CameraInfo.CAMERA_FACING_FRONT) return i
         }
-        return 0 // fall back to the first camera
+        return 0
     }
 
     // ── connection + command handling ───────────────────────────
@@ -254,6 +275,11 @@ class MainActivity : AppCompatActivity(),
                         })
                         it.subscribe("temi/command/#") { topic, message ->
                             handleCommand(topic, message)
+                        }
+                        it.subscribe("temi/status/photo") { _, message ->
+                            if (message.payload.isEmpty()) {
+                                runOnUiThread { photoView.setImageBitmap(null) }
+                            }
                         }
                     }
                     showStatus("Connected to $BROKER_URI\nPublishing status, listening for commands...")
@@ -275,7 +301,7 @@ class MainActivity : AppCompatActivity(),
     private fun handleCommand(topic: String, message: MqttMessage) {
         try {
             val command = topic.substringAfterLast("/")
-            Log.i(TAG, "Command received: $command")
+            if (command != "move") Log.i(TAG, "Command received: $command")
 
             when (command) {
                 "speak" -> {
@@ -300,32 +326,28 @@ class MainActivity : AppCompatActivity(),
                         robot.stopMovement()
                     }
                 }
-                // NEW in v5
                 "photo" -> {
                     runOnUiThread {
                         robot.speak(TtsRequest.create("1, 2, 3, smile!", false))
                     }
                     capturePhoto()
                 }
-                // NEW in v6: rotate in place by a relative number of degrees
-                // (positive = counterclockwise, negative = clockwise)
-                "turn" -> {
-                    val degrees = JSONObject(String(message.payload)).getInt("degrees")
-                    showStatus("Turning by $degrees°")
-                    runOnUiThread {
-                        robot.turnBy(degrees)
-                    }
-                }
-                // NEW in v6: set head tilt to an absolute angle (-25..55)
                 "tilt" -> {
                     val angle = JSONObject(String(message.payload)).getInt("angle")
-                        .coerceIn(-25, 55) // never send an out-of-range angle
+                        .coerceIn(-25, 55)
                     showStatus("Tilting head to $angle°")
                     runOnUiThread {
                         robot.tiltAngle(angle)
                     }
                 }
-                // NEW in v7: trigger temi's listening (same as "Hey temi")
+                "move" -> {
+                    val payload = JSONObject(String(message.payload))
+                    val x = payload.getDouble("x").toFloat().coerceIn(-1f, 1f)
+                    val y = payload.getDouble("y").toFloat().coerceIn(-1f, 1f)
+                    runOnUiThread {
+                        robot.skidJoy(y, -x)
+                    }
+                }
                 "listen" -> {
                     showStatus("Listening...")
                     runOnUiThread {
@@ -343,20 +365,9 @@ class MainActivity : AppCompatActivity(),
         val client = mqtt ?: return
 
         robot.batteryData?.let { b ->
-            // NEW in v10: Android's battery broadcast is "sticky" — passing a
-            // null receiver just returns the latest one, no registration
-            // needed. Temperature arrives in tenths of a degree Celsius.
-            val batteryIntent = registerReceiver(
-                null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)
-            )
-            val tempTenths = batteryIntent?.getIntExtra(
-                android.os.BatteryManager.EXTRA_TEMPERATURE, -1
-            ) ?: -1
-
             val payload = JSONObject()
                 .put("level", b.level)
                 .put("charging", b.isCharging)
-            if (tempTenths > 0) payload.put("temp", tempTenths / 10.0)
             client.publish("temi/status/battery", MqttMessage(payload.toString().toByteArray()))
         }
 
@@ -375,20 +386,12 @@ class MainActivity : AppCompatActivity(),
     }
 
     private fun showStatus(msg: String) {
-        runOnUiThread { statusText.text = "Temi Bridge v7\n\n$msg" }
+        runOnUiThread { statusText.text = "Temi Bridge\n\n$msg" }
     }
 
     override fun onDestroy() {
         scope.cancel()
         try { mqtt?.disconnect() } catch (_: Exception) {}
         super.onDestroy()
-    }
-
-    override fun onAsrResult(asrResult: String, sttLanguage: SttLanguage) {
-        showStatus("Heard: \"$asrResult\"")
-        publishEvent("temi/status/asr", JSONObject()
-            .put("text", asrResult)
-            .put("timestamp", System.currentTimeMillis()))
-        robot.finishConversation()
     }
 }

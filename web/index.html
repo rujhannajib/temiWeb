@@ -27,10 +27,6 @@
                 </div>
             </div>
             <div class="stat">
-                <span class="statLabel">Internal temp</span>
-                <span class="statValue"><span id="batteryTemp">--</span>&deg;C</span>
-            </div>
-            <div class="stat">
                 <span class="statLabel">Position</span>
                 <span class="statValue small">
                     x <b id="posX">--</b>&ensp;y <b id="posY">--</b>&ensp;yaw <b id="posYaw">--</b>
@@ -55,6 +51,23 @@
             </div>
         </div>
 
+        <!-- drive -->
+        <div class="card">
+            <h2>Drive</h2>
+            <div class="dpad">
+                <button class="dpadBtn dpadUp" data-dir="forward">&#9650;</button>
+                <button class="dpadBtn dpadLeft" data-dir="left">&#9664;</button>
+                <button class="dpadBtn dpadRight" data-dir="right">&#9654;</button>
+                <button class="dpadBtn dpadDown" data-dir="backward">&#9660;</button>
+            </div>
+            <div class="speedRow">
+                <button class="speedBtn" data-speed="0.3">Slow</button>
+                <button class="speedBtn active" data-speed="0.6">Normal</button>
+                <button class="speedBtn" data-speed="1.0">Fast</button>
+            </div>
+            <div class="sub">Press and hold to drive (or use arrow keys / WASD on the laptop). Release to stop.</div>
+        </div>
+
         <!-- controls -->
         <div class="grid2">
             <div class="card">
@@ -70,18 +83,6 @@
                 <h2>Go To</h2>
                 <div id="locButtons" class="btnRow"><span class="sub">waiting for locations...</span></div>
                 <button id="stopBtn" disabled>STOP</button>
-            </div>
-
-            <div class="card">
-                <h2>Rotate</h2>
-                <div class="btnRow">
-                    <button class="locBtn" onclick="turnBy(90)">&#8634; 90&deg;</button>
-                    <button class="locBtn" onclick="turnBy(45)">&#8634; 45&deg;</button>
-                    <button class="locBtn" onclick="turnBy(15)">&#8634; 15&deg;</button>
-                    <button class="locBtn" onclick="turnBy(-15)">15&deg; &#8635;</button>
-                    <button class="locBtn" onclick="turnBy(-45)">45&deg; &#8635;</button>
-                    <button class="locBtn" onclick="turnBy(-90)">90&deg; &#8635;</button>
-                </div>
             </div>
 
             <div class="card">
