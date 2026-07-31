@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity(),
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var statusText: TextView
     private lateinit var photoView: android.widget.ImageView
+    private lateinit var videoView: android.widget.VideoView
 
     // FIX: this must be a class-level property, not declared inside onCreate()
     private lateinit var previewHolder: android.view.SurfaceHolder
@@ -87,15 +88,34 @@ class MainActivity : AppCompatActivity(),
 
         photoView = android.widget.ImageView(this).apply {
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f // fills remaining space
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
             )
             setBackgroundColor(android.graphics.Color.DKGRAY)
         }
 
+        videoView = android.widget.VideoView(this).apply {
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            visibility = android.view.View.GONE
+        }
+
+        // photoView and videoView share this one slot, only one visible
+        // at a time — this replaces photoView being added to root directly
+        val mediaContainer = android.widget.FrameLayout(this).apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+            addView(photoView)
+            addView(videoView)
+        }
+
         root.addView(previewSurfaceView)
         root.addView(statusText)
-        root.addView(photoView)
+        root.addView(mediaContainer)
         setContentView(root)
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
@@ -187,6 +207,11 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
+    // NEW: video state — playing/paused/stopped/loading/ended/error
+    private fun publishVideoState(state: String) {
+        publishEvent("temi/status/video", JSONObject().put("state", state))
+    }
+
     // ── photo capture ────────────────────────────────────────────
 
     private fun capturePhoto() {
@@ -223,7 +248,11 @@ class MainActivity : AppCompatActivity(),
                             showStatus("Photo captured (${jpegBytes.size / 1024} KB), publishing...")
 
                             val bitmap = android.graphics.BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
-                            runOnUiThread { photoView.setImageBitmap(bitmap) }
+                            runOnUiThread {
+                                videoView.visibility = android.view.View.GONE
+                                photoView.visibility = android.view.View.VISIBLE
+                                photoView.setImageBitmap(bitmap)
+                            }
 
                             scope.launch {
                                 try {
@@ -353,6 +382,42 @@ class MainActivity : AppCompatActivity(),
                     runOnUiThread {
                         robot.wakeup()
                     }
+                }
+                // NEW: video — a URL from the laptop's upload server, not
+                // bytes over MQTT. VideoView handles the HTTP streaming.
+                "video_load" -> {
+                    val url = JSONObject(String(message.payload)).getString("url")
+                    showStatus("Loading video...")
+                    publishVideoState("loading")
+                    runOnUiThread {
+                        photoView.visibility = android.view.View.GONE
+                        videoView.visibility = android.view.View.VISIBLE
+                        videoView.setOnCompletionListener { publishVideoState("ended") }
+                        videoView.setOnErrorListener { _, what, extra ->
+                            showStatus("Video error: $what/$extra")
+                            publishVideoState("error")
+                            true
+                        }
+                        videoView.setVideoURI(android.net.Uri.parse(url))
+                        videoView.start()
+                    }
+                    publishVideoState("playing")
+                }
+                "video_play" -> {
+                    runOnUiThread { videoView.start() }
+                    publishVideoState("playing")
+                }
+                "video_pause" -> {
+                    runOnUiThread { videoView.pause() }
+                    publishVideoState("paused")
+                }
+                "video_stop" -> {
+                    runOnUiThread {
+                        videoView.stopPlayback()
+                        videoView.visibility = android.view.View.GONE
+                        photoView.visibility = android.view.View.VISIBLE
+                    }
+                    publishVideoState("stopped")
                 }
                 else -> Log.w(TAG, "Unknown command: $command")
             }
