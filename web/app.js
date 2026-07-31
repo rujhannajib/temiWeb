@@ -1,6 +1,11 @@
 // Temi Dashboard — app.js
 // CHANGE THIS to your laptop's IP (same machine running Mosquitto)
 const BROKER = "ws://192.168.0.38:9001";
+// Used to build video URLs for Temi. Deliberately NOT window.location.origin —
+// if the dashboard is opened as localhost/127.0.0.1, that would tell Temi to
+// fetch the video from ITSELF instead of your laptop. Keep this in sync with
+// the IP above.
+const HTTP_ORIGIN = "http://192.168.0.38:8000";
 
 document.getElementById("brokerUrl").textContent = BROKER;
 
@@ -10,6 +15,12 @@ const ttsText = document.getElementById("ttsText");
 const speakStatus = document.getElementById("speakStatus");
 const photoBtn = document.getElementById("photoBtn");
 const listenBtn = document.getElementById("listenBtn");
+const videoFile = document.getElementById("videoFile");
+const uploadBtn = document.getElementById("uploadBtn");
+const videoPlayBtn = document.getElementById("videoPlayBtn");
+const videoPauseBtn = document.getElementById("videoPauseBtn");
+const videoStopBtn = document.getElementById("videoStopBtn");
+const videoStatus = document.getElementById("videoStatus");
 
 const client = mqtt.connect(BROKER, { reconnectPeriod: 3000 });
 
@@ -97,6 +108,10 @@ client.on("message", (topic, message) => {
         document.getElementById("interacting").textContent = data.interacting ? "yes" : "no";
     }
 
+    if (topic === "temi/status/video") {
+        videoStatus.textContent = "Status: " + data.state;
+    }
+
     if (topic === "temi/status/locations") {
         const box = document.getElementById("locButtons");
         box.innerHTML = "";
@@ -176,6 +191,41 @@ document.getElementById("clearPhotoBtn").addEventListener("click", () => {
 listenBtn.addEventListener("click", () => {
     client.publish("temi/command/listen", "{}");
 });
+
+// video: upload to the laptop's Flask server, then tell the robot to
+// load it by URL — the video bytes never touch MQTT
+uploadBtn.addEventListener("click", async () => {
+    const file = videoFile.files[0];
+    if (!file) { videoStatus.textContent = "Choose a file first"; return; }
+
+    videoStatus.textContent = "Uploading " + (file.size / 1024 / 1024).toFixed(1) + " MB...";
+    uploadBtn.disabled = true;
+    try {
+        const form = new FormData();
+        form.append("video", file);
+        const res = await fetch("/upload", { method: "POST", body: form });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        // same-origin as the dashboard itself, so this always points at
+        // whichever host actually served this page — no hardcoded IP needed
+        const url = HTTP_ORIGIN + "/videos/" + data.filename;
+        videoStatus.textContent = "Uploaded \u2014 loading on Temi...";
+        client.publish("temi/command/video_load", JSON.stringify({ url: url }));
+
+        videoPlayBtn.disabled = false;
+        videoPauseBtn.disabled = false;
+        videoStopBtn.disabled = false;
+    } catch (e) {
+        videoStatus.textContent = "Upload failed: " + e.message;
+    } finally {
+        uploadBtn.disabled = false;
+    }
+});
+
+videoPlayBtn.addEventListener("click", () => client.publish("temi/command/video_play", "{}"));
+videoPauseBtn.addEventListener("click", () => client.publish("temi/command/video_pause", "{}"));
+videoStopBtn.addEventListener("click", () => client.publish("temi/command/video_stop", "{}"));
 
 // clear listen history — local to this dashboard only
 document.getElementById("clearAsrBtn").addEventListener("click", () => {

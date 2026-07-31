@@ -98,6 +98,20 @@
 
         <!-- media -->
         <div class="grid2">
+            <div class="card" style="grid-column: 1 / -1;">
+                <h2>Video</h2>
+                <div class="inline">
+                    <input type="file" id="videoFile" accept="video/*">
+                    <button id="uploadBtn" class="locBtn">Upload &amp; Play</button>
+                </div>
+                <div class="btnRow" style="margin-top:10px;">
+                    <button id="videoPlayBtn" class="locBtn" disabled>&#9654; Play</button>
+                    <button id="videoPauseBtn" class="locBtn" disabled>&#9208; Pause</button>
+                    <button id="videoStopBtn" class="locBtn ghost" disabled>&#9209; Stop</button>
+                </div>
+                <div id="videoStatus" class="sub"></div>
+            </div>
+
             <div class="card">
                 <h2>Camera</h2>
                 <div class="btnRow">
